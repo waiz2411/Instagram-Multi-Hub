@@ -7,6 +7,7 @@ import { db } from '../db.js';
 import { browserManager } from '../browserManager.js';
 import { outreachEngine } from '../outreachEngine.js';
 import { warmupEngine } from '../warmupEngine.js';
+import { inboxMonitor } from '../inboxMonitor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +78,28 @@ router.post('/', async (req, res) => {
     res.json({ success: true, account: newAccount });
   } catch (err) {
     console.error('[Accounts API] Error creating account:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Master Alert Settings (Replies & Incoming Messages)
+router.get('/alerts/settings', (req, res) => {
+  const settings = db.getAlertSettings();
+  res.json({ success: true, settings });
+});
+
+// Update Master Alert Settings
+router.post('/alerts/settings', (req, res) => {
+  const updated = db.updateAlertSettings(req.body);
+  res.json({ success: true, settings: updated });
+});
+
+// Trigger an immediate inbox scan across all connected accounts
+router.post('/alerts/check', async (req, res) => {
+  try {
+    const result = await inboxMonitor.checkAllInboxes();
+    res.json({ success: true, ...result });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

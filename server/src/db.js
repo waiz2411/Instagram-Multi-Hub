@@ -17,7 +17,12 @@ const defaultData = {
     defaultMinDelay: 25, // in minutes
     defaultMaxDelay: 35, // in minutes
     dailyDmLimit: 30,
-    lastResetDate: new Date().toISOString().slice(0, 10)
+    lastResetDate: new Date().toISOString().slice(0, 10),
+    alerts: {
+      enabled: true,
+      recipientUsername: 'sync_satisfy',
+      alertedKeys: []
+    }
   }
 };
 
@@ -220,6 +225,45 @@ class Database {
     this.data.campaigns = this.data.campaigns.filter(c => c.id !== id);
     this.save();
     return true;
+  }
+
+  // --- Alert Settings for Incoming Replies ---
+  getAlertSettings() {
+    if (!this.data.settings) this.data.settings = defaultData.settings;
+    if (!this.data.settings.alerts) {
+      this.data.settings.alerts = {
+        enabled: true,
+        recipientUsername: 'sync_satisfy',
+        alertedKeys: []
+      };
+    }
+    return this.data.settings.alerts;
+  }
+
+  isMessageAlerted(key) {
+    const alerts = this.getAlertSettings();
+    return Array.isArray(alerts.alertedKeys) && alerts.alertedKeys.includes(key);
+  }
+
+  markMessageAlerted(key) {
+    const alerts = this.getAlertSettings();
+    if (!Array.isArray(alerts.alertedKeys)) {
+      alerts.alertedKeys = [];
+    }
+    if (!alerts.alertedKeys.includes(key)) {
+      alerts.alertedKeys.push(key);
+      if (alerts.alertedKeys.length > 2000) {
+        alerts.alertedKeys = alerts.alertedKeys.slice(-2000);
+      }
+      this.save();
+    }
+  }
+
+  updateAlertSettings(updates) {
+    this.getAlertSettings();
+    this.data.settings.alerts = { ...this.data.settings.alerts, ...updates };
+    this.save();
+    return this.data.settings.alerts;
   }
 
   // --- Logs ---

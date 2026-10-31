@@ -4,7 +4,7 @@
   "description": "Multi-Account Instagram Outreach & Interactive Browser Platform",
   "scripts": {
     "start": "node server/src/index.js",
-    "build": "npm run install:all && cd client && npm run build",
+    "build": "npm run install:all && cd client && npm run build && cd ../server && npx playwright install chromium",
     "render-build": "chmod +x ./render-build.sh && ./render-build.sh",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",

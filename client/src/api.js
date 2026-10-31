@@ -69,6 +69,28 @@ export const api = {
     return res.json();
   },
 
+  // Reply & Message Alerts to Master Account (@sync_satisfy)
+  async getAlertSettings() {
+    const res = await fetch(`${BASE_URL}/api/accounts/alerts/settings`);
+    return res.json();
+  },
+
+  async updateAlertSettings(data) {
+    const res = await fetch(`${BASE_URL}/api/accounts/alerts/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async triggerInboxScan() {
+    const res = await fetch(`${BASE_URL}/api/accounts/alerts/check`, {
+      method: 'POST'
+    });
+    return res.json();
+  },
+
   async openAccountSession(id, data = {}) {
     const res = await fetch(`${BASE_URL}/api/accounts/${id}/open`, {
       method: 'POST',

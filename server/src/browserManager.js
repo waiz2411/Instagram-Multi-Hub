@@ -86,7 +86,25 @@ class BrowserSession {
       }
 
       console.log(`[Browser] Launching session for @${this.account.username || this.accountId} (headless: ${this.isHeadless})...`);
-      this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
+      try {
+        this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
+      } catch (launchErr) {
+        const errMsg = launchErr.message || '';
+        if (errMsg.includes("Executable doesn't exist") || errMsg.includes('npx playwright install')) {
+          console.warn('[Browser] Playwright browser executable is missing. Auto-downloading Chromium right now...');
+          const { execSync } = await import('child_process');
+          try {
+            execSync('npx playwright install chromium', { stdio: 'inherit' });
+            console.log('[Browser] Chromium downloaded successfully! Retrying persistent context launch...');
+            this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
+          } catch (installErr) {
+            console.error('[Browser] Auto-download error:', installErr.message);
+            throw launchErr;
+          }
+        } else {
+          throw launchErr;
+        }
+      }
 
       const pages = this.context.pages();
       this.page = pages.length > 0 ? pages[0] : await this.context.newPage();

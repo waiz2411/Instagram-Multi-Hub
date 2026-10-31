@@ -2,6 +2,8 @@
 # Exit immediately if a command exits with a non-zero status
 set -o errexit
 
+export PLAYWRIGHT_BROWSERS_PATH=0
+
 echo "================================================="
 echo "  🚀 Starting Render Production Build Process    "
 echo "================================================="
@@ -16,9 +18,11 @@ echo "2. Compiling React Vite client for production..."
 cd client && npm run build
 cd ..
 
-echo "3. Installing Playwright Chromium and Linux OS dependencies..."
+echo "3. Installing Playwright Chromium into local project..."
 cd server
-npx playwright install --with-deps chromium
+export PLAYWRIGHT_BROWSERS_PATH=0
+npx playwright install chromium
+npx playwright install-deps chromium || true
 cd ..
 
 echo "================================================="

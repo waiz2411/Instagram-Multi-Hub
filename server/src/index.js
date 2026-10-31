@@ -15,6 +15,7 @@ import { db } from './db.js';
 import { browserManager } from './browserManager.js';
 import { outreachEngine } from './outreachEngine.js';
 import { warmupEngine } from './warmupEngine.js';
+import { inboxMonitor } from './inboxMonitor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,12 +121,14 @@ wss.on('connection', async (ws, request) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n[Server] Shutting down gracefully...');
+  inboxMonitor.stopMonitoring();
   await browserManager.closeAll();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n[Server] SIGTERM received, shutting down...');
+  inboxMonitor.stopMonitoring();
   await browserManager.closeAll();
   process.exit(0);
 });
@@ -136,4 +139,7 @@ server.listen(PORT, () => {
   console.log(`   HTTP: http://localhost:${PORT}`);
   console.log(`   WS:   ws://localhost:${PORT}/ws/browser/:id`);
   console.log(`===============================================`);
+
+  // Start background monitoring for incoming lead replies
+  inboxMonitor.startMonitoring();
 });

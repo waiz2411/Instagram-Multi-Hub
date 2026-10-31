@@ -15,7 +15,8 @@ import {
   Layers,
   Settings,
   RefreshCw,
-  Zap
+  Zap,
+  Bell
 } from 'lucide-react';
 import { api } from './api';
 import AccountCard from './components/AccountCard';
@@ -36,6 +37,24 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [activeBrowserAccount, setActiveBrowserAccount] = useState(null);
+  const [scanningReplies, setScanningReplies] = useState(false);
+
+  const handleScanReplies = async () => {
+    setScanningReplies(true);
+    try {
+      const res = await api.triggerInboxScan();
+      if (res.alertsSent > 0) {
+        alert(`🚨 Sent ${res.alertsSent} new reply alert(s) to @sync_satisfy!`);
+      } else {
+        alert('✅ Direct inboxes scanned. No new unalerted replies.');
+      }
+      loadData();
+    } catch (err) {
+      alert('Alert scan error: ' + err.message);
+    } finally {
+      setScanningReplies(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -156,8 +175,19 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Connect Account CTA */}
-          <div className="flex items-center gap-3">
+          {/* Connect Account CTA & Master Alert Pill */}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleScanReplies}
+              disabled={scanningReplies}
+              title="Incoming lead replies to any connected account are automatically forwarded as DMs to @sync_satisfy. Click to run a manual inbox scan."
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-2xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold transition shadow-sm"
+            >
+              <Bell className={`w-3.5 h-3.5 text-purple-400 ${scanningReplies ? 'animate-bounce' : ''}`} />
+              <span>Alerts: @sync_satisfy</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </button>
+
             <button
               onClick={() => setShowAddModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-pink-600 via-rose-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xs font-extrabold shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 transition active:scale-95 cursor-pointer"
