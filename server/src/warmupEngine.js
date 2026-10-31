@@ -118,10 +118,7 @@ class WarmupEngine {
       await page.waitForTimeout(3000);
 
       // Dismiss any popup modals
-      try {
-        const notNowBtn = await page.$('button:has-text("Not Now"), button:has-text("Cancel")');
-        if (notNowBtn) await notNowBtn.click();
-      } catch (e) {}
+      await page.locator('button:has-text("Not Now"), button:has-text("Cancel")').first().click({ timeout: 2000 }).catch(() => {});
 
       // Execute a session of 8-14 human interactions
       const interactionsInSession = Math.floor(Math.random() * 7) + 8; // 8 to 14
@@ -162,13 +159,19 @@ class WarmupEngine {
         const shouldLike = Math.random() < 0.25;
         if (shouldLike) {
           try {
-            // Find like button (heart icon with aria-label="Like")
-            const likeButtons = await page.$$('svg[aria-label="Like"], button svg[aria-label="Like"], div[role="button"] svg[aria-label="Like"]');
-            if (likeButtons.length > 0) {
-              // Click the most visible or first unliked button
-              const likeBtn = likeButtons[0];
-              await likeBtn.click();
+            // Find and click like button safely using DOM evaluation (immune to detached handle errors)
+            const likeSelector = 'svg[aria-label="Like"], button svg[aria-label="Like"], div[role="button"] svg[aria-label="Like"]';
+            const liked = await page.evaluate((sel) => {
+              const svg = document.querySelector(sel);
+              if (svg) {
+                const btn = svg.closest('button') || svg.closest('div[role="button"]') || svg;
+                btn.click();
+                return true;
+              }
+              return false;
+            }, likeSelector).catch(() => false);
 
+            if (liked) {
               currentStats.likesGiven = (currentStats.likesGiven || 0) + 1;
               db.updateAccount(accountId, {
                 warmupStats: currentStats,
@@ -195,10 +198,13 @@ class WarmupEngine {
         const shouldComment = !sessionComments && Math.random() < 0.07;
         if (shouldComment) {
           try {
-            const commentBox = await page.$('textarea[placeholder*="comment"], textarea[aria-label*="comment"], div[contenteditable="true"][role="textbox"]');
-            if (commentBox) {
+            const commentSelector = 'textarea[placeholder*="comment"], textarea[aria-label*="comment"], div[contenteditable="true"][role="textbox"]';
+            const commentLocator = page.locator(commentSelector).first();
+            const isVisible = await commentLocator.isVisible().catch(() => false);
+
+            if (isVisible) {
               const commentText = FRIENDLY_COMMENTS[Math.floor(Math.random() * FRIENDLY_COMMENTS.length)];
-              await commentBox.click();
+              await commentLocator.click({ timeout: 3000 }).catch(() => {});
               await page.waitForTimeout(600);
               await page.keyboard.type(commentText, { delay: Math.floor(Math.random() * 40) + 50 });
               await page.waitForTimeout(1000);
@@ -208,6 +214,24 @@ class WarmupEngine {
               currentStats.commentsGiven = (currentStats.commentsGiven || 0) + 1;
               db.updateAccount(accountId, {
                 warmupStats: currentStats,
+                warmupCurrentAction: `Commented: "${commentText}" 💬`
+              });
+
+              db.addLog({
+                accountId: account.id,
+                targetUsername: 'feed',
+                action: 'warmup_comment',
+                status: 'success',
+                details: `Warmup Engine: Commented "${commentText}"`
+              });
+
+              console.log(`[Warmup] @${account.username} commented: "${commentText}"`);
+              await page.waitForTimeout(3000);
+            }
+          } catch (commentErr) {
+            console.warn(`[Warmup] Notice while commenting:`, commentErr.message);
+          }
+        }
                 warmupCurrentAction: `Commented: "${commentText}" 💬`
               });
 

@@ -93,10 +93,7 @@ class InboxMonitor {
     await page.waitForTimeout(3000);
 
     // Dismiss notifications modal if present
-    try {
-      const notNowBtn = await page.$('button:has-text("Not Now"), button:has-text("Cancel")');
-      if (notNowBtn) await notNowBtn.click();
-    } catch (e) {}
+    await page.locator('button:has-text("Not Now"), button:has-text("Cancel")').first().click({ timeout: 2000 }).catch(() => {});
 
     // Extract thread previews from inbox list
     const threads = await page.evaluate(() => {

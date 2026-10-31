@@ -30,6 +30,38 @@ export function personalizeMessage(template, lead) {
   return message;
 }
 
+// Resilient click helper that auto-heals against React virtual DOM re-renders and detached elementHandles
+async function safeClick(page, selector, timeout = 7000) {
+  const locator = page.locator(selector).first();
+  try {
+    await locator.waitFor({ state: 'visible', timeout });
+    await locator.click({ timeout: 5000 });
+    return true;
+  } catch (err) {
+    // Fallback 1: Direct DOM click inside browser context (100% immune to Playwright ElementHandle detachment)
+    const domClicked = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        el.click();
+        return true;
+      }
+      return false;
+    }, selector).catch(() => false);
+
+    if (domClicked) return true;
+
+    // Fallback 2: Forced click with locator
+    try {
+      await page.waitForTimeout(600);
+      await page.locator(selector).first().click({ timeout: 4000, force: true });
+      return true;
+    } catch (finalErr) {
+      return false;
+    }
+  }
+}
+
 class OutreachEngine {
   constructor() {
     this.activeAccountWorkers = new Map(); // accountId -> { isRunning: bool, timeoutId: timer }
@@ -214,83 +246,73 @@ class OutreachEngine {
     await page.waitForTimeout(3000);
 
     // Dismiss any cookie / app banner
-    try {
-      const dismissBtn = await page.$(
-        'button:has-text("Not Now"), button:has-text("Decline"), button:has-text("Cancel")'
-      );
-      if (dismissBtn) await dismissBtn.click();
-    } catch (e) {}
+    await safeClick(
+      page,
+      'button:has-text("Not Now"), button:has-text("Decline"), button:has-text("Cancel")',
+      2500
+    );
 
     // 2. Look for Message button on profile
-    let messageButton = null;
-    try {
-      messageButton = await page.waitForSelector(
-        'header button:has-text("Message"), header div[role="button"]:has-text("Message"), button:has-text("Message"), div[role="button"]:has-text("Message"), a[href*="/direct/t/"]',
-        { timeout: 7000 }
-      );
-    } catch (e) {}
+    const messageBtnSelector =
+      'header button:has-text("Message"), header div[role="button"]:has-text("Message"), button:has-text("Message"), div[role="button"]:has-text("Message"), a[href*="/direct/t/"]';
 
-    if (messageButton) {
+    let hasMessageBtn = false;
+    try {
+      await page.locator(messageBtnSelector).first().waitFor({ state: 'visible', timeout: 6000 });
+      hasMessageBtn = true;
+    } catch (e) {
+      hasMessageBtn = false;
+    }
+
+    if (hasMessageBtn) {
       console.log(`[Outreach] Found Message button on @${cleanUsername}'s profile. Clicking...`);
-      await messageButton.click();
+      await safeClick(page, messageBtnSelector, 6000);
+      await page.waitForTimeout(3000);
     } else {
       console.log(`[Outreach] Message button not on profile. Navigating to Direct Inbox compose...`);
       await page.goto('https://www.instagram.com/direct/new/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(2500);
 
       // Dismiss modal if present
-      try {
-        const notNow = await page.$('button:has-text("Not Now")');
-        if (notNow) await notNow.click();
-      } catch (e) {}
+      await safeClick(page, 'button:has-text("Not Now")', 2000);
 
       // Find recipient search input
-      const searchInput = await page.waitForSelector('input[name="queryBox"], input[placeholder*="Search"]', { timeout: 10000 });
-      await searchInput.click();
-      await searchInput.fill('');
-      await searchInput.type(cleanUsername, { delay: 50 });
+      const searchInputSelector = 'input[name="queryBox"], input[placeholder*="Search"]';
+      await page.locator(searchInputSelector).first().waitFor({ state: 'visible', timeout: 10000 });
+      await safeClick(page, searchInputSelector, 3000);
+      await page.locator(searchInputSelector).first().fill('');
+      await page.locator(searchInputSelector).first().type(cleanUsername, { delay: 50 });
       await page.waitForTimeout(2500);
 
       // Select target user from search results list
-      const userResult = await page.waitForSelector(
-        `span:has-text("${cleanUsername}"), div[role="button"]:has-text("${cleanUsername}"), label:has-text("${cleanUsername}"), input[type="checkbox"]`,
-        { timeout: 8000 }
-      );
-      await userResult.click();
+      const userResultSelector = `span:has-text("${cleanUsername}"), div[role="button"]:has-text("${cleanUsername}"), label:has-text("${cleanUsername}"), input[type="checkbox"]`;
+      await safeClick(page, userResultSelector, 8000);
       await page.waitForTimeout(1000);
 
       // Click "Chat" or "Next" button in header
-      const nextBtn = await page.waitForSelector(
-        'div[role="button"]:has-text("Next"), button:has-text("Next"), div[role="button"]:has-text("Chat"), button:has-text("Chat")',
-        { timeout: 5000 }
-      );
-      await nextBtn.click();
+      const nextBtnSelector =
+        'div[role="button"]:has-text("Next"), button:has-text("Next"), div[role="button"]:has-text("Chat"), button:has-text("Chat")';
+      await safeClick(page, nextBtnSelector, 6000);
+      await page.waitForTimeout(2500);
     }
 
     // Dismiss notifications prompt if it pops up after opening chat
-    try {
-      const notNowBtn = await page.$('button:has-text("Not Now"), div[role="button"]:has-text("Not Now")');
-      if (notNowBtn) {
-        await notNowBtn.click();
-        await page.waitForTimeout(500);
-      }
-    } catch (e) {}
+    await safeClick(page, 'button:has-text("Not Now"), div[role="button"]:has-text("Not Now")', 2000);
 
     // 3. Wait for the message input box to mount (contenteditable Lexical editor or textarea)
     console.log(`[Outreach] Waiting for message input box to mount for @${cleanUsername}...`);
-    let messageBox = null;
-    try {
-      messageBox = await page.waitForSelector(
-        'div[contenteditable="true"][role="textbox"], div[role="textbox"], textarea[placeholder*="Message"], div[contenteditable="true"]',
-        { timeout: 15000 }
-      );
-    } catch (e) {}
+    const messageBoxSelector =
+      'div[contenteditable="true"][role="textbox"], div[role="textbox"], textarea[placeholder*="Message"], div[contenteditable="true"]';
 
-    if (!messageBox) {
+    const inputLocator = page.locator(messageBoxSelector).first();
+    try {
+      await inputLocator.waitFor({ state: 'visible', timeout: 15000 });
+    } catch (e) {
       throw new Error(`Could not locate message input box for @${cleanUsername}. Check if user allows DMs from non-followers.`);
     }
 
-    await messageBox.click();
+    // Safely focus and click the message box
+    await safeClick(page, messageBoxSelector, 5000);
     await page.waitForTimeout(500);
 
     // Natural human typing simulation
@@ -303,13 +325,7 @@ class OutreachEngine {
     await page.waitForTimeout(1500);
 
     // Also look for and click explicit "Send" button if still present
-    try {
-      const sendBtn = await page.$('button:has-text("Send"), div[role="button"]:has-text("Send")');
-      if (sendBtn) {
-        await sendBtn.click();
-        await page.waitForTimeout(1500);
-      }
-    } catch (e) {}
+    await safeClick(page, 'button:has-text("Send"), div[role="button"]:has-text("Send")', 2000);
 
     await page.waitForTimeout(2000);
     console.log(`[Outreach] Successfully sent DM to @${cleanUsername}`);
