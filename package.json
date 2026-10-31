@@ -1,0 +1,17 @@
+{
+  "name": "instagram-multi-hub",
+  "version": "1.0.0",
+  "description": "Multi-Account Instagram Outreach & Interactive Browser Platform",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "build": "npm run install:all && cd client && npm run build",
+    "render-build": "chmod +x ./render-build.sh && ./render-build.sh",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "dependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

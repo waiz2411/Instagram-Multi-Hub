@@ -1,0 +1,93 @@
+{
+  "accounts": [
+    {
+      "id": "f94e975a-96d4-41ef-a01c-9faf0ddfe835",
+      "username": "wt_designstudio",
+      "fullName": "",
+      "profilePic": "https://instagram.fhdd1-1.fna.fbcdn.net/v/t51.82787-19/671743584_18081954884119796_1045497996851914143_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy42NDAuQzMifQ%3D%3D&_nc_ohc=-8YXbhsH2m0Q7kNvwGK1Mkl&_nc_oc=Adr9WZMQOAR9yPYYHRXIRWNhvaNs-L3yZ2delwbPmdlNcTJHMlvxCV2jjlGK_hceMuI&_nc_zt=24&_nc_ht=instagram.fhdd1-1.fna&_nc_gid=8Z8W2eqrRJ1QbLS8MPNu2A&_nc_ss=7baaf&oh=00_AQRViXvKIgY2mqCSSGK9QNQvZsyoOkucoEvlzvGan5eCVQ&oe=6AEA5923",
+      "status": "connected",
+      "proxyUrl": null,
+      "isMobile": true,
+      "createdAt": "2026-10-27T10:54:03.578Z",
+      "lastActiveAt": "2026-10-30T17:25:55.157Z",
+      "sentToday": 0,
+      "assignedListName": "General",
+      "updatedAt": "2026-10-30T17:27:09.488Z",
+      "outreachStatus": "paused",
+      "currentAction": "idle",
+      "currentActionDetails": "",
+      "totalSent": 1,
+      "lastOutreachAt": "2026-10-30T17:26:08.719Z",
+      "lastSentAt": "2026-10-30T17:26:08.719Z",
+      "nextRunAt": null,
+      "minDelay": 25,
+      "maxDelay": 35,
+      "warmupEnabled": false,
+      "warmupStatus": "idle",
+      "warmupCurrentAction": "",
+      "warmupStats": {
+        "postsViewed": 0,
+        "likesGiven": 0,
+        "commentsGiven": 0,
+        "lastActiveAt": null
+      }
+    }
+  ],
+  "leads": [
+    {
+      "id": "e0a170d9-00c7-4eb8-9712-bd580d4c1745",
+      "username": "sync_satisfy",
+      "fullName": "Waiz",
+      "profileUrl": "https://www.instagram.com/sync_satisfy/",
+      "listName": "General",
+      "status": "contacted",
+      "notes": "",
+      "addedAt": "2026-10-30T12:38:58.598Z",
+      "contactedAt": "2026-10-30T17:26:08.716Z"
+    }
+  ],
+  "campaigns": [],
+  "logs": [
+    {
+      "id": "mvuxtdt69dt3",
+      "timestamp": "2026-10-30T12:17:26.058Z",
+      "accountId": "f94e975a-96d4-41ef-a01c-9faf0ddfe835",
+      "targetUsername": "sync_satisfy",
+      "action": "send_dm",
+      "status": "failed",
+      "details": "Message input box not found (user may have private/restricted DMs)"
+    },
+    {
+      "id": "mvuym17a8kp7",
+      "timestamp": "2026-10-30T12:39:42.742Z",
+      "accountId": "f94e975a-96d4-41ef-a01c-9faf0ddfe835",
+      "targetUsername": "sync_satisfy",
+      "action": "send_dm",
+      "status": "failed",
+      "details": "Could not locate message input box for @sync_satisfy. Check if user allows DMs from non-followers."
+    },
+    {
+      "id": "mvv8udzlezk9",
+      "timestamp": "2026-10-30T17:26:08.722Z",
+      "accountId": "f94e975a-96d4-41ef-a01c-9faf0ddfe835",
+      "targetUsername": "sync_satisfy",
+      "action": "send_dm",
+      "status": "success",
+      "details": "Sent DM: \"Hey first_name! Loved your profile....\""
+    }
+  ],
+  "settings": {
+    "defaultViewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "mobileViewport": {
+      "width": 430,
+      "height": 932
+    },
+    "defaultMinDelay": 45,
+    "defaultMaxDelay": 90,
+    "dailyDmLimit": 30,
+    "lastResetDate": "2026-10-31"
+  }
+}

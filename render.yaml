@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: instagram-multi-hub
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: "./render-build.sh"
+    startCommand: "node server/src/index.js"
+    envVars:
+      - key: NODE_ENV
+        value: production

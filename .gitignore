@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Browser profiles & caches (huge temporary Chromium binaries/cookies)
+server/data/profiles/*
+!server/data/profiles/.gitkeep
+data/profiles/*
+!data/profiles/.gitkeep
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Vite build cache (can be rebuilt during deploy)
+client/dist
+.cache
