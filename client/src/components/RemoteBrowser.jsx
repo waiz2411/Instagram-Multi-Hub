@@ -69,10 +69,13 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
     }
   }, []);
 
-  // Connect to live binary WebSocket stream - ONLY depends on account.id
+  // Connect to live binary WebSocket stream - dynamically adapts to local dev & cloud production
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:5000/ws/browser/${account.id}`;
+    const wsHost = window.location.port === '3000'
+      ? `${window.location.hostname}:5000`
+      : window.location.host;
+    const wsUrl = `${protocol}//${wsHost}/ws/browser/${account.id}`;
 
     console.log('[RemoteBrowser] Connecting to WebSocket:', wsUrl);
     const ws = new WebSocket(wsUrl);
@@ -82,7 +85,7 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
     const t0 = performance.now();
 
     ws.onopen = () => {
-      console.log('[RemoteBrowser] WebSocket connected');
+      console.log('[RemoteBrowser] WebSocket connected successfully');
       setConnected(true);
       setLatency(Math.max(5, Math.round(performance.now() - t0)));
     };
@@ -90,6 +93,7 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
     ws.onmessage = async (event) => {
       // 1. Binary JPEG frame (ultra-fast hardware decoding)
       if (event.data instanceof Blob) {
+        setConnected(true);
         try {
           const bitmap = await createImageBitmap(event.data);
           const canvas = canvasRef.current;
@@ -132,6 +136,7 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
             showNotification(`Connected as @${msg.account.username}!`);
           }
         } else if (msg.type === 'session_ready') {
+          setConnected(true);
           if (msg.url) {
             setUrl(msg.url);
             setInputUrl(msg.url);
@@ -139,6 +144,9 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
           if (msg.viewport) {
             setViewport(msg.viewport);
           }
+        } else if (msg.type === 'error') {
+          console.error('[RemoteBrowser] Server message:', msg.message);
+          showNotification('Notice: ' + msg.message);
         }
       } catch (err) {
         console.error('[RemoteBrowser] JSON parse error:', err);

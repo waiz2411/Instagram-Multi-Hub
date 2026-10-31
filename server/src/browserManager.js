@@ -481,6 +481,10 @@ class BrowserManager {
   }
 
   async openNativeWindow(accountId) {
+    if (process.platform === 'linux' && !process.env.DISPLAY) {
+      throw new Error('Desktop window mode requires a local screen (Windows/Mac). On cloud servers like Render, please use the in-app Remote Browser.');
+    }
+
     const existing = this.sessions.get(accountId);
     if (existing) {
       await existing.close();
