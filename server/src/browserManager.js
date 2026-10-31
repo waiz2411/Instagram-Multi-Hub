@@ -25,6 +25,32 @@ class BrowserSession {
     this.lastFrameTime = 0;
     this.minFrameInterval = 33; // ~30 FPS throttle
     this.isStarting = false;
+    this.currentTask = null;
+    this._lock = Promise.resolve();
+  }
+
+  isBusy() {
+    return Boolean(this.currentTask);
+  }
+
+  async acquireLock(taskName = 'task') {
+    let release;
+    const nextLock = new Promise(resolve => {
+      release = resolve;
+    });
+    const previousLock = this._lock;
+    this._lock = this._lock.then(() => nextLock);
+    await previousLock;
+    this.currentTask = taskName;
+
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.currentTask = null;
+        release();
+      }
+    };
   }
 
   getProfileDir() {

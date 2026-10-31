@@ -79,103 +79,120 @@ class InboxMonitor {
     const page = session.page;
     if (!page) return 0;
 
-    // Verify session
-    const cookies = await session.context.cookies(['https://www.instagram.com']);
-    const sessionCookie = cookies.find(c => c.name === 'sessionid');
-    if (!sessionCookie || !sessionCookie.value) {
+    // Skip if session is currently executing outreach or warmup
+    if (session.isBusy()) {
+      console.log(`[InboxMonitor] Session @${account.username} is busy with ${session.currentTask}. Skipping check.`);
       return 0;
     }
 
-    console.log(`[InboxMonitor] Scanning Direct Inbox on @${account.username}...`);
+    const releaseLock = await session.acquireLock('inboxMonitor');
 
-    // Navigate to direct inbox
-    await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(3000);
+    try {
+      // Verify session
+      const cookies = await session.context.cookies(['https://www.instagram.com']);
+      const sessionCookie = cookies.find(c => c.name === 'sessionid');
+      if (!sessionCookie || !sessionCookie.value) {
+        return 0;
+      }
 
-    // Dismiss notifications modal if present
-    await page.locator('button:has-text("Not Now"), button:has-text("Cancel")').first().click({ timeout: 2000 }).catch(() => {});
+      console.log(`[InboxMonitor] Scanning Direct Inbox on @${account.username}...`);
 
-    // Extract thread previews from inbox list
-    const threads = await page.evaluate(() => {
-      const list = [];
-      const links = Array.from(document.querySelectorAll('a[href*="/direct/t/"]'));
+      // Navigate to direct inbox
+      await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await page.waitForTimeout(3000);
 
-      for (const link of links) {
-        const text = link.innerText || '';
-        const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
-
-        if (lines.length >= 2) {
-          const sender = lines[0].replace('@', '');
-          const snippet = lines[1];
-          const lower = snippet.toLowerCase();
-
-          // Check if latest message is from lead (not from "You")
-          const isFromOther = !lower.startsWith('you: ') && !lower.startsWith('you sent ');
-
-          // Check if unread badge or bold styling exists
-          const isUnread = Boolean(
-            link.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
-          );
-
-          list.push({
-            sender,
-            snippet,
-            isFromOther,
-            isUnread
-          });
+      // Dismiss notifications modal if present
+      await page.evaluate(() => {
+        const notNow = document.querySelector('button');
+        if (notNow && (notNow.innerText.includes('Not Now') || notNow.innerText.includes('Cancel'))) {
+          notNow.click();
         }
+      }).catch(() => {});
+
+      // Extract thread previews from inbox list
+      const threads = await page.evaluate(() => {
+        const list = [];
+        const links = Array.from(document.querySelectorAll('a[href*="/direct/t/"]'));
+
+        for (const link of links) {
+          const text = link.innerText || '';
+          const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+
+          if (lines.length >= 2) {
+            const sender = lines[0].replace('@', '');
+            const snippet = lines[1];
+            const lower = snippet.toLowerCase();
+
+            // Check if latest message is from lead (not from "You")
+            const isFromOther = !lower.startsWith('you: ') && !lower.startsWith('you sent ');
+
+            // Check if unread badge or bold styling exists
+            const isUnread = Boolean(
+              link.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
+            );
+
+            list.push({
+              sender,
+              snippet,
+              isFromOther,
+              isUnread
+            });
+          }
+        }
+        return list;
+      }).catch(() => []);
+
+      let alertsTriggered = 0;
+      const recipientClean = recipientUsername.toLowerCase();
+
+      for (const thread of threads) {
+        const leadClean = thread.sender.toLowerCase();
+
+        // Don't alert if the chat is with the recipient themselves
+        if (leadClean === recipientClean) continue;
+
+        // Only alert if message is incoming from lead or marked unread
+        if (!thread.isFromOther && !thread.isUnread) continue;
+
+        // Create signature for deduplication
+        const alertKey = `${account.id}:${leadClean}:${thread.snippet.trim()}`;
+        if (db.isMessageAlerted(alertKey)) {
+          continue;
+        }
+
+        console.log(`[InboxMonitor] 🚨 New reply detected on @${account.username} from @${thread.sender}: "${thread.snippet}"`);
+
+        // Construct notification DM to master alert account (@sync_satisfy)
+        const alertText = `🚨 [Lead Reply Alert]\nAccount: @${account.username || 'IG Account'}\nLead: @${thread.sender}\nReply: "${thread.snippet}"\nTime: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        let sendSuccess = false;
+        try {
+          sendSuccess = await outreachEngine.sendInstagramDirectMessage(account, recipientUsername, alertText);
+        } catch (err) {
+          console.error(`[InboxMonitor] Failed to send alert to @${recipientUsername}:`, err.message);
+        }
+
+        if (sendSuccess) {
+          db.markMessageAlerted(alertKey);
+          db.addLog({
+            accountId: account.id,
+            targetUsername: recipientUsername,
+            action: 'reply_alert',
+            status: 'success',
+            details: `Forwarded reply from @${thread.sender} on @${account.username} to @${recipientUsername}`
+          });
+          alertsTriggered++;
+          console.log(`[InboxMonitor] ✅ Alert successfully delivered to @${recipientUsername}`);
+        }
+
+        // Small delay between alerts if multiple
+        await new Promise(r => setTimeout(r, 2000));
       }
-      return list;
-    }).catch(() => []);
 
-    let alertsTriggered = 0;
-    const recipientClean = recipientUsername.toLowerCase();
-
-    for (const thread of threads) {
-      const leadClean = thread.sender.toLowerCase();
-
-      // Don't alert if the chat is with the recipient themselves
-      if (leadClean === recipientClean) continue;
-
-      // Only alert if message is incoming from lead or marked unread
-      if (!thread.isFromOther && !thread.isUnread) continue;
-
-      // Create signature for deduplication
-      const alertKey = `${account.id}:${leadClean}:${thread.snippet.trim()}`;
-      if (db.isMessageAlerted(alertKey)) {
-        continue;
-      }
-
-      console.log(`[InboxMonitor] 🚨 New reply detected on @${account.username} from @${thread.sender}: "${thread.snippet}"`);
-
-      // Construct notification DM to master alert account (@sync_satisfy)
-      const alertText = `🚨 [Lead Reply Alert]\nAccount: @${account.username || 'IG Account'}\nLead: @${thread.sender}\nReply: "${thread.snippet}"\nTime: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-      let sendSuccess = false;
-      try {
-        sendSuccess = await outreachEngine.sendInstagramDirectMessage(account, recipientUsername, alertText);
-      } catch (err) {
-        console.error(`[InboxMonitor] Failed to send alert to @${recipientUsername}:`, err.message);
-      }
-
-      if (sendSuccess) {
-        db.markMessageAlerted(alertKey);
-        db.addLog({
-          accountId: account.id,
-          targetUsername: recipientUsername,
-          action: 'reply_alert',
-          status: 'success',
-          details: `Forwarded reply from @${thread.sender} on @${account.username} to @${recipientUsername}`
-        });
-        alertsTriggered++;
-        console.log(`[InboxMonitor] ✅ Alert successfully delivered to @${recipientUsername}`);
-      }
-
-      // Small delay between alerts if multiple
-      await new Promise(r => setTimeout(r, 2000));
+      return alertsTriggered;
+    } finally {
+      releaseLock();
     }
-
-    return alertsTriggered;
   }
 }
 
