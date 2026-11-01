@@ -4,15 +4,15 @@
       "id": "f94e975a-96d4-41ef-a01c-9faf0ddfe835",
       "username": "wt_designstudio",
       "fullName": "",
-      "profilePic": "https://instagram.fhdd1-1.fna.fbcdn.net/v/t51.82787-19/671743584_18081954884119796_1045497996851914143_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy42NDAuQzMifQ%3D%3D&_nc_ohc=-8YXbhsH2m0Q7kNvwGK1Mkl&_nc_oc=Adr9WZMQOAR9yPYYHRXIRWNhvaNs-L3yZ2delwbPmdlNcTJHMlvxCV2jjlGK_hceMuI&_nc_zt=24&_nc_ht=instagram.fhdd1-1.fna&_nc_gid=8Z8W2eqrRJ1QbLS8MPNu2A&_nc_ss=7baaf&oh=00_AQRViXvKIgY2mqCSSGK9QNQvZsyoOkucoEvlzvGan5eCVQ&oe=6AEA5923",
+      "profilePic": "https://instagram.fhdd1-1.fna.fbcdn.net/v/t51.82787-19/671743584_18081954884119796_1045497996851914143_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy42NDAuQzMifQ%3D%3D&_nc_ohc=-8YXbhsH2m0Q7kNvwGK1Mkl&_nc_oc=Adr9WZMQOAR9yPYYHRXIRWNhvaNs-L3yZ2delwbPmdlNcTJHMlvxCV2jjlGK_hceMuI&_nc_zt=24&_nc_ht=instagram.fhdd1-1.fna&_nc_gid=f9z_VQt67pQ93IRpJlsGVA&_nc_ss=7aaaf&oh=00_AQSavyuWKm33SxbEucbw7KRY1B7tQIxv3sF_qwoiUhjXEA&oe=6AECC3E3",
       "status": "connected",
       "proxyUrl": null,
-      "isMobile": true,
+      "isMobile": false,
       "createdAt": "2026-10-27T10:54:03.578Z",
-      "lastActiveAt": "2026-10-30T17:25:55.157Z",
+      "lastActiveAt": "2026-11-01T09:49:04.843Z",
       "sentToday": 0,
       "assignedListName": "General",
-      "updatedAt": "2026-10-30T17:27:09.488Z",
+      "updatedAt": "2026-11-01T09:49:04.843Z",
       "outreachStatus": "paused",
       "currentAction": "idle",
       "currentActionDetails": "",
@@ -88,6 +88,6 @@
     "defaultMinDelay": 45,
     "defaultMaxDelay": 90,
     "dailyDmLimit": 30,
-    "lastResetDate": "2026-10-31"
+    "lastResetDate": "2026-11-01"
   }
 }
