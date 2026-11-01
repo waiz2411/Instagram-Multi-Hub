@@ -18,7 +18,8 @@ import {
   ExternalLink,
   Zap,
   Activity,
-  Clipboard
+  Clipboard,
+  Key
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -48,6 +49,9 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
   const [fps, setFps] = useState(0);
   const [latency, setLatency] = useState(15);
   const [isLaunchingNative, setIsLaunchingNative] = useState(false);
+  const [showCookieModal, setShowCookieModal] = useState(false);
+  const [cookieInput, setCookieInput] = useState('');
+  const [isImportingCookie, setIsImportingCookie] = useState(false);
 
   const showNotification = (msg) => {
     setNotification(msg);
@@ -124,7 +128,9 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
       // 2. Control JSON message
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'navigated') {
+        if (msg.type === 'pong' && msg.t) {
+          setLatency(Math.max(5, Math.round(Date.now() - msg.t)));
+        } else if (msg.type === 'navigated') {
           setUrl(msg.url);
           setInputUrl(msg.url);
         } else if (msg.type === 'account_detected') {
@@ -218,10 +224,10 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
     });
   };
 
-  // Throttled mouse move (40 events/sec max)
+  // Throttled mouse move (12 events/sec max - eliminates network saturation & lag)
   const handleMouseMove = (e) => {
     const now = performance.now();
-    if (now - lastMoveRef.current < 25) return;
+    if (now - lastMoveRef.current < 80) return;
     lastMoveRef.current = now;
     const { x, y } = getCoords(e);
     send({
@@ -380,6 +386,43 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
     }
   };
 
+  // Live ping loop to measure and display real-time latency accurately
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(() => {
+      send({ type: 'ping', t: Date.now() });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [connected, send]);
+
+  const handleImportCookie = async (e) => {
+    if (e) e.preventDefault();
+    if (!cookieInput.trim()) {
+      alert('Please enter your sessionid value or cookie string.');
+      return;
+    }
+
+    setIsImportingCookie(true);
+    try {
+      const res = await api.importCookie(account.id, cookieInput.trim());
+      if (res.success && res.account) {
+        if (onAccountUpdatedRef.current) {
+          onAccountUpdatedRef.current(res.account);
+        }
+        setDetectSuccess(true);
+        showNotification(`Logged in as @${res.account.username || account.username}! 🎉`);
+        setShowCookieModal(false);
+        setCookieInput('');
+      } else {
+        alert('Cookie import notice: ' + (res.error || 'Failed to authenticate with provided cookie'));
+      }
+    } catch (err) {
+      alert('Could not import cookie: ' + err.message);
+    } finally {
+      setIsImportingCookie(false);
+    }
+  };
+
   const quickNavigate = (targetUrl) => {
     setInputUrl(targetUrl);
     send({ type: 'navigate', url: targetUrl });
@@ -515,6 +558,16 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
               <span className="hidden sm:inline">Paste</span>
             </button>
 
+            {/* Cookie Login (Instant 1-Click Login) */}
+            <button
+              onClick={() => setShowCookieModal(true)}
+              title="Instant 1-Click Login (Bypasses all CAPTCHAs, bot checks & checkpoints)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-yellow-500/15 text-amber-300 hover:text-amber-200 text-xs font-semibold transition border border-amber-500/30 hover:border-amber-400/60 shadow-sm shadow-amber-500/10 cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Cookie Login</span>
+            </button>
+
             {/* Launch Native Desktop Window */}
             <button
               onClick={handleLaunchNative}
@@ -586,6 +639,24 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
             </div>
           )}
 
+          {/* Smart Checkpoint Alert Banner */}
+          {(url.includes('auth_platform') || url.includes('checkpoint')) && (
+            <div className="absolute top-4 z-30 max-w-xl mx-auto px-4 py-2.5 rounded-2xl bg-amber-950/95 border border-amber-500/40 text-amber-200 text-xs shadow-2xl backdrop-blur flex items-center justify-between gap-3 animate-pulse">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🛡️</span>
+                <span>
+                  <strong>Instagram Security Checkpoint:</strong> Solve it on screen, or click <strong>Cookie Login</strong> to bypass this checkpoint instantly!
+                </span>
+              </div>
+              <button
+                onClick={() => setShowCookieModal(true)}
+                className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] shrink-0 cursor-pointer shadow-md transition"
+              >
+                Cookie Login
+              </button>
+            </div>
+          )}
+
           {!connected && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm gap-3">
               <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
@@ -640,6 +711,83 @@ export default function RemoteBrowser({ account, onClose, onAccountUpdated }) {
           </div>
         </div>
       </div>
+
+      {/* Cookie Login Modal Overlay */}
+      {showCookieModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowCookieModal(false)}
+              className="absolute top-5 right-5 p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Instant Cookie Login</h3>
+                <p className="text-xs text-slate-400">100% bypass for all CAPTCHAs, bot checks & checkpoints</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleImportCookie} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Instagram <code className="text-amber-400 font-mono">sessionid</code> Cookie Value or Full Cookie String
+                </label>
+                <textarea
+                  rows={4}
+                  value={cookieInput}
+                  onChange={(e) => setCookieInput(e.target.value)}
+                  placeholder="Paste your sessionid (e.g. 6829472%3APVq... or sessionid=...; ds_user_id=...)"
+                  className="w-full rounded-2xl bg-slate-950 border border-slate-800 p-3 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/60 font-mono transition resize-none"
+                  required
+                />
+              </div>
+
+              {/* 3-Step Guide */}
+              <div className="rounded-2xl bg-slate-950/70 border border-slate-800/80 p-3.5 text-xs text-slate-400 space-y-2">
+                <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+                  <span>💡</span> How to get your sessionid in 10 seconds:
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-400">
+                  <li>Open <strong>Instagram.com</strong> in your regular Chrome browser where you are already logged in.</li>
+                  <li>Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">F12</kbd> (or right click → <em>Inspect</em>) and click the <strong>Application</strong> tab.</li>
+                  <li>Under <strong>Cookies</strong> → select <code className="text-pink-400">https://www.instagram.com</code>, copy the <strong>Value</strong> of <code className="text-amber-400">sessionid</code>, and paste it above!</li>
+                </ol>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCookieModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isImportingCookie}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 hover:opacity-95 transition shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isImportingCookie ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Logging In...
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-4 h-4" /> Connect Account Instantly
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

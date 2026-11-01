@@ -227,6 +227,27 @@ router.post('/:id/native-window', async (req, res) => {
   }
 });
 
+// Import session cookie (Instant 1-click login without CAPTCHA / checkpoints)
+router.post('/:id/import-cookie', async (req, res) => {
+  try {
+    const { cookie, sessionId } = req.body;
+    const cookieData = cookie || sessionId;
+    if (!cookieData) {
+      return res.status(400).json({ success: false, error: 'Please provide a valid sessionid or cookie string' });
+    }
+
+    const updatedAccount = await browserManager.importCookies(req.params.id, cookieData);
+    res.json({
+      success: true,
+      message: 'Session cookie imported successfully!',
+      account: updatedAccount
+    });
+  } catch (err) {
+    console.error('[AccountsRoute] import-cookie error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Close browser session
 router.post('/:id/close', async (req, res) => {
   try {

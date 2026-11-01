@@ -100,6 +100,15 @@ export const api = {
     return res.json();
   },
 
+  async importCookie(id, cookieData) {
+    const res = await fetch(`${BASE_URL}/api/accounts/${id}/import-cookie`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(typeof cookieData === 'string' ? { cookie: cookieData } : cookieData)
+    });
+    return res.json();
+  },
+
   async openNativeWindow(id) {
     const res = await fetch(`${BASE_URL}/api/accounts/${id}/native-window`, {
       method: 'POST'

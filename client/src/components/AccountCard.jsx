@@ -15,7 +15,8 @@ import {
   Zap,
   Eye,
   Heart,
-  MessageCircle
+  MessageCircle,
+  Key
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -423,22 +424,31 @@ export default function AccountCard({
           </button>
         </div>
 
-        {/* Secondary options: Native Desktop Window & Session Sync */}
-        <div className="flex items-center justify-between gap-2 pt-1">
+        {/* Secondary options: Cookie Login, Native Desktop Window & Session Sync */}
+        <div className="flex items-center justify-between gap-1.5 pt-1">
+          <button
+            onClick={() => onOpenBrowser(account)}
+            title="Import sessionid to connect instantly without CAPTCHAs"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-semibold transition border border-amber-500/20 cursor-pointer"
+          >
+            <Key className="w-3 h-3 text-amber-400" />
+            <span>Cookie Login</span>
+          </button>
+
           <button
             onClick={handleOpenNative}
             title="Open real Chrome window on your desktop (100% native speed)"
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[11px] font-medium transition"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[11px] font-medium transition cursor-pointer"
           >
             <ExternalLink className="w-3 h-3 text-blue-400" />
-            <span>Desktop Window</span>
+            <span>Desktop</span>
           </button>
 
           <button
             onClick={handleSync}
             disabled={loading}
             title="Detect / Sync Session"
-            className="flex items-center gap-1 py-1.5 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[11px] font-medium transition"
+            className="flex items-center gap-1 py-1.5 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[11px] font-medium transition cursor-pointer"
           >
             <RotateCw className={`w-3 h-3 ${loading ? 'animate-spin text-pink-400' : ''}`} />
             <span>Sync</span>
