@@ -274,140 +274,141 @@ class OutreachEngine {
         );
       }
 
-      const cleanUsername = targetUsername.replace('@', '').trim();
-      const profileUrl = `https://www.instagram.com/${cleanUsername}/`;
-      console.log(`[Outreach] Opening target profile: ${profileUrl}`);
+      const cleanTarget = targetUsername.replace('@', '').trim().toLowerCase();
+      console.log(`[Outreach] Opening Direct Inbox to message @${cleanTarget}...`);
 
-      // 1. Navigate to user profile
-      await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      // 1. Navigate directly to Instagram Direct Inbox
+      await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
       await page.waitForTimeout(3000);
 
-      // Dismiss any cookie / app / login banner
-      await clickDomElement(page, {
-        selector: 'button, div[role="button"]',
-        text: 'Not Now',
-        timeout: 2000
-      });
-
-      // 2. Look for Message button strictly on profile (never match "Messages" in sidebar)
-      console.log(`[Outreach] Looking for Message button on @${cleanUsername}'s profile...`);
-      let clickedMessage = await page.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('header button, header div[role="button"], main button, main div[role="button"], button, div[role="button"], a[href*="/direct/t/"]'));
-        const msgBtn = elements.find(el => {
-          const inner = (el.innerText || '').trim().toLowerCase();
-          const aria = (el.getAttribute('aria-label') || '').trim().toLowerCase();
-          // Strict equality so it NEVER matches "Messages" in navigation sidebar!
-          return inner === 'message' || aria === 'message' || (el.getAttribute('href') && el.getAttribute('href').includes('/direct/t/'));
-        });
-        if (msgBtn) {
-          msgBtn.scrollIntoView({ block: 'center', behavior: 'instant' });
-          msgBtn.click();
-          return true;
-        }
-        return false;
-      }).catch(() => false);
-
-      if (clickedMessage) {
-        console.log(`[Outreach] Clicked Message button on @${cleanUsername}'s profile.`);
-        await page.waitForTimeout(3000);
-      } else {
-        console.log(`[Outreach] Message button not on profile. Navigating to Direct Inbox compose...`);
-        await page.goto('https://www.instagram.com/direct/new/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-        await page.waitForTimeout(2500);
-
-        // Dismiss modal if present
-        await clickDomElement(page, {
-          selector: 'button',
-          text: 'Not Now',
-          timeout: 2000
-        });
-
-        // Search recipient input
-        const searchInputSelector = 'input[name="searchInput"], input[name="queryBox"], input[placeholder*="Search"]';
-        const foundSearch = await clickDomElement(page, { selector: searchInputSelector, timeout: 10000 });
-        if (!foundSearch) {
-          throw new Error(`Could not find recipient search box in compose window.`);
-        }
-        await page.evaluate((sel) => {
-          const inp = document.querySelector(sel);
-          if (inp) {
-            inp.value = '';
-            inp.focus();
-          }
-        }, searchInputSelector);
-        await page.keyboard.type(cleanUsername, { delay: 50 });
-        await page.waitForTimeout(2500);
-
-        // Select target user from search results list
-        const clickedUser = await page.evaluate((targetUser) => {
-          const all = Array.from(document.querySelectorAll('div[role="button"], [role="checkbox"], input[type="checkbox"], [tabindex]'));
-          const match = all.find(el => {
-            const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-            return t.includes(targetUser.toLowerCase());
-          });
-          if (match) {
-            match.click();
-            return true;
-          }
-          return false;
-        }, cleanUsername);
-
-        if (!clickedUser) {
-          throw new Error(`Could not find user @${cleanUsername} in search results.`);
-        }
-        await page.waitForTimeout(1000);
-
-        // Click "Send message" or "Chat" or "Next" button in header/footer
-        await clickDomElement(page, {
-          selector: 'div[role="button"], button',
-          text: 'Send message',
-          timeout: 4000
-        }) || await clickDomElement(page, {
-          selector: 'div[role="button"], button',
-          text: 'Chat',
-          timeout: 4000
-        }) || await clickDomElement(page, {
-          selector: 'div[role="button"], button',
-          text: 'Next',
-          timeout: 4000
-        });
-        await page.waitForTimeout(2500);
-      }
-
-      // 3. Wait for the message input box to mount (contenteditable Lexical editor or textarea)
-      console.log(`[Outreach] Waiting for message input box to mount for @${cleanUsername}...`);
-      const messageBoxSelector =
-        'div[contenteditable="true"][role="textbox"], div[data-lexical-editor="true"], div[aria-placeholder*="Message"], div[role="textbox"], textarea[placeholder*="Message"], div[contenteditable="true"]';
-
-      let clickedInput = false;
-      const startTime = Date.now();
-      while (Date.now() - startTime < 15000) {
-        // Dismiss any popups or notification dialogs that might overlay the screen
+      // Helper to dismiss notification/modal overlays
+      const dismissPopups = async () => {
         await page.evaluate(() => {
           const dismissTexts = ['not now', 'cancel', 'ok', 'got it', 'close', 'dismiss'];
           const btns = Array.from(document.querySelectorAll('button, div[role="button"]'));
           for (const b of btns) {
             const t = (b.innerText || '').trim().toLowerCase();
             if (dismissTexts.includes(t)) {
-              b.click();
+              try { b.click(); } catch (e) {}
             }
           }
         }).catch(() => {});
+      };
 
-        clickedInput = await page.evaluate((sel) => {
-          const elements = Array.from(document.querySelectorAll(sel));
-          // Filter to visible elements only
-          const visible = elements.filter(el => {
-            const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden';
+      await dismissPopups();
+
+      // 2. Check if thread for target is already visible in the sidebar thread list
+      console.log(`[Outreach] Checking if thread for @${cleanTarget} is in the inbox sidebar list...`);
+      let threadSelected = await page.evaluate((target) => {
+        function clean(s) {
+          return (s || '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '').trim().toLowerCase();
+        }
+        const all = Array.from(document.querySelectorAll('div[role="button"], a, [tabindex]'));
+        const sidebarButtons = all.filter(el => {
+          const r = el.getBoundingClientRect();
+          return r.left < 450 && r.width > 80 && r.height > 25;
+        });
+
+        for (const btn of sidebarButtons) {
+          const t = clean(btn.innerText);
+          if (t.includes(target)) {
+            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+            btn.click();
+            return true;
+          }
+        }
+        return false;
+      }, cleanTarget);
+
+      // 3. If not already in sidebar list, use inbox sidebar search box to find recipient
+      if (!threadSelected) {
+        console.log(`[Outreach] Using inbox sidebar search to find @${cleanTarget}...`);
+        let searchFound = false;
+        const searchStartTime = Date.now();
+        while (Date.now() - searchStartTime < 10000) {
+          await dismissPopups();
+          searchFound = await page.evaluate(() => {
+            const inputs = Array.from(document.querySelectorAll('input'));
+            const sidebarSearch = inputs.find(i => {
+              const r = i.getBoundingClientRect();
+              return r.left < 450 && r.width > 50 && (i.placeholder || '').toLowerCase().includes('search');
+            });
+            if (sidebarSearch) {
+              sidebarSearch.scrollIntoView({ block: 'center', behavior: 'instant' });
+              sidebarSearch.focus();
+              sidebarSearch.value = '';
+              return true;
+            }
+            return false;
           });
-          const target = visible[0] || elements[0];
+          if (searchFound) break;
+          await page.waitForTimeout(500);
+        }
+
+        if (!searchFound) {
+          throw new Error(`Could not find inbox search box`);
+        }
+
+        await page.keyboard.type(cleanTarget, { delay: 60 });
+        console.log(`[Outreach] Typed @${cleanTarget} in search box, awaiting results...`);
+        await page.waitForTimeout(3000);
+
+        // Pick user from sidebar search results list
+        const startSelect = Date.now();
+        while (Date.now() - startSelect < 12000) {
+          threadSelected = await page.evaluate((target) => {
+            function clean(s) {
+              return (s || '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '').trim().toLowerCase();
+            }
+            const all = Array.from(document.querySelectorAll('div[role="button"], a, [tabindex]'));
+            const searchItems = all.filter(el => {
+              const r = el.getBoundingClientRect();
+              return r.left < 450 && r.top > 120 && r.height > 20 && r.width > 80;
+            });
+
+            for (const item of searchItems) {
+              const t = clean(item.innerText);
+              if (t.includes(target)) {
+                item.scrollIntoView({ block: 'center', behavior: 'instant' });
+                item.click();
+                return true;
+              }
+            }
+            return false;
+          }, cleanTarget);
+
+          if (threadSelected) break;
+          await page.waitForTimeout(500);
+        }
+
+        if (!threadSelected) {
+          throw new Error(`Could not find @${cleanTarget} in inbox search results.`);
+        }
+      }
+
+      console.log(`[Outreach] Selected @${cleanTarget}'s conversation! Waiting for message input box...`);
+      await page.waitForTimeout(2500);
+
+      // 4. Locate message input box in the active conversation
+      const messageBoxSelector =
+        'div[role="textbox"][contenteditable="true"], div[data-lexical-editor="true"], div[aria-placeholder*="Message"], textarea[placeholder*="Message"]';
+
+      let boxFound = false;
+      const startBox = Date.now();
+      while (Date.now() - startBox < 15000) {
+        await dismissPopups();
+        boxFound = await page.evaluate((sel) => {
+          const boxes = Array.from(document.querySelectorAll(sel));
+          const visible = boxes.filter(b => {
+            const r = b.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && window.getComputedStyle(b).visibility !== 'hidden';
+          });
+          const target = visible[0] || boxes[0];
           if (target) {
             target.scrollIntoView({ block: 'center', behavior: 'instant' });
             target.focus();
             target.click();
 
-            // Set selection / caret to end of editor
             try {
               const sel = window.getSelection();
               const range = document.createRange();
@@ -420,36 +421,35 @@ class OutreachEngine {
             return true;
           }
           return false;
-        }, messageBoxSelector).catch(() => false);
+        }, messageBoxSelector);
 
-        if (clickedInput) break;
+        if (boxFound) break;
         await page.waitForTimeout(500);
       }
 
-      if (!clickedInput) {
-        throw new Error(`Could not locate message input box for @${cleanUsername}. Check if user allows DMs from non-followers.`);
+      if (!boxFound) {
+        throw new Error(`Could not locate message input box for @${cleanTarget}`);
       }
 
-      await page.waitForTimeout(600);
-
-      // Natural human typing simulation
-      console.log(`[Outreach] Typing personalized message...`);
-      await page.keyboard.type(message, { delay: Math.floor(Math.random() * 25) + 30 });
+      // 5. Type and send message naturally
+      console.log(`[Outreach] Typing personalized message to @${cleanTarget}...`);
+      await page.waitForTimeout(500);
+      await page.keyboard.type(message, { delay: Math.floor(Math.random() * 20) + 30 });
       await page.waitForTimeout(800);
 
-      // Send via Enter key
+      console.log('[Outreach] Dispatching message (Enter)...');
       await page.keyboard.press('Enter');
       await page.waitForTimeout(1500);
 
-      // Also look for and click explicit "Send" button if still present
-      await clickDomElement(page, {
-        selector: 'button, div[role="button"]',
-        text: 'Send',
-        timeout: 2000
-      });
+      // Also click Send button if present
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, div[role="button"]'));
+        const send = btns.find(b => (b.innerText || '').trim().toLowerCase() === 'send');
+        if (send) send.click();
+      }).catch(() => {});
 
-      await page.waitForTimeout(2000);
-      console.log(`[Outreach] Successfully sent DM to @${cleanUsername}`);
+      await page.waitForTimeout(2500);
+      console.log(`[Outreach] ✅ Successfully sent DM to @${cleanTarget}`);
       return true;
     } finally {
       releaseLock();

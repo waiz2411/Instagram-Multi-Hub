@@ -111,24 +111,31 @@ class InboxMonitor {
 
       // Extract thread previews from inbox list
       const threads = await page.evaluate(() => {
+        function clean(s) {
+          return (s || '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '').trim();
+        }
+
         const list = [];
-        const links = Array.from(document.querySelectorAll('a[href*="/direct/t/"]'));
+        const candidates = Array.from(document.querySelectorAll('div[role="button"], a, [tabindex]'));
+        const threadElements = candidates.filter(el => {
+          const r = el.getBoundingClientRect();
+          return r.left < 450 && r.width > 120 && r.height >= 40 && r.top > 100;
+        });
 
-        for (const link of links) {
-          const text = link.innerText || '';
-          const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
-
+        for (const el of threadElements) {
+          const rawText = clean(el.innerText || '');
+          const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
           if (lines.length >= 2) {
-            const sender = lines[0].replace('@', '');
+            const sender = lines[0].replace('@', '').trim();
+            if (['primary', 'general', 'requests', "what's new...", 'your note', 'messages'].includes(sender.toLowerCase())) {
+              continue;
+            }
+
             const snippet = lines[1];
-            const lower = snippet.toLowerCase();
-
-            // Check if latest message is from lead (not from "You")
-            const isFromOther = !lower.startsWith('you: ') && !lower.startsWith('you sent ');
-
-            // Check if unread badge or bold styling exists
-            const isUnread = Boolean(
-              link.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
+            const lowerSnippet = snippet.toLowerCase();
+            const isFromOther = !lowerSnippet.startsWith('you: ') && !lowerSnippet.startsWith('you sent ');
+            const isUnread = rawText.toLowerCase().includes('unread') || Boolean(
+              el.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
             );
 
             list.push({
@@ -148,8 +155,10 @@ class InboxMonitor {
       for (const thread of threads) {
         const leadClean = thread.sender.toLowerCase();
 
-        // Don't alert if the chat is with the recipient themselves
-        if (leadClean === recipientClean) continue;
+        // Prevent loops if thread is the forwarded alert itself
+        if (thread.snippet.includes('[Lead Reply Alert]') || thread.snippet.includes('[Outreach Alert]')) {
+          continue;
+        }
 
         // Only alert if message is incoming from lead or marked unread
         if (!thread.isFromOther && !thread.isUnread) continue;
