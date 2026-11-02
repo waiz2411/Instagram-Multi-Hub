@@ -33,24 +33,64 @@ class BrowserSession {
     return Boolean(this.currentTask);
   }
 
-  async acquireLock(taskName = 'task') {
+  async acquireLock(taskName = 'task', timeoutMs = 60000) {
+    // 1. Re-entrancy: If this session is already locked by this exact task,
+    // or if inboxMonitor is delegating to outreach/sendDM, allow re-entrancy without deadlocking!
+    if (this.currentTask === taskName || (this.currentTask === 'inboxMonitor' && taskName === 'outreach')) {
+      this._lockDepth = (this._lockDepth || 1) + 1;
+      return () => {
+        this._lockDepth = Math.max(0, (this._lockDepth || 1) - 1);
+        if (this._lockDepth === 0) {
+          this.currentTask = null;
+          this.lockAcquiredAt = null;
+        }
+      };
+    }
+
     let release;
     const nextLock = new Promise(resolve => {
       release = resolve;
     });
+
     const previousLock = this._lock;
     this._lock = this._lock.then(() => nextLock);
-    await previousLock;
+
+    // 2. Lock timeout safety: Never let any lock wait more than timeoutMs (default 60s)
+    let timer;
+    const timeoutPromise = new Promise(resolve => {
+      timer = setTimeout(() => {
+        console.warn(`[BrowserSession] Lock wait for "${taskName}" on @${this.account?.username} exceeded ${timeoutMs}ms. Resetting lock.`);
+        this.currentTask = null;
+        resolve();
+      }, timeoutMs);
+    });
+
+    await Promise.race([previousLock, timeoutPromise]);
+    clearTimeout(timer);
+
     this.currentTask = taskName;
+    this._lockDepth = 1;
+    this.lockAcquiredAt = Date.now();
 
     let released = false;
     return () => {
       if (!released) {
         released = true;
-        this.currentTask = null;
+        this._lockDepth = Math.max(0, (this._lockDepth || 1) - 1);
+        if (this._lockDepth === 0) {
+          this.currentTask = null;
+          this.lockAcquiredAt = null;
+        }
         release();
       }
     };
+  }
+
+  forceResetLock() {
+    this.currentTask = null;
+    this._lockDepth = 0;
+    this.lockAcquiredAt = null;
+    this._lock = Promise.resolve();
   }
 
   getProfileDir() {

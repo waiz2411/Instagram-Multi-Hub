@@ -54,10 +54,17 @@ class InboxMonitor {
       let alertsSent = 0;
 
       for (const account of accounts) {
-        // Skip if cold outreach is actively dispatching a message right now
+        // Skip if cold outreach is actively dispatching a message right now (unless stuck for >3m)
         if (account.currentAction === 'dispatching') {
-          console.log(`[InboxMonitor] Account @${account.username} is currently dispatching a DM. Skipping inbox check.`);
-          continue;
+          const updatedAtTime = new Date(account.updatedAt || 0).getTime();
+          const isStuck = Date.now() - updatedAtTime > 3 * 60 * 1000;
+          if (!isStuck) {
+            console.log(`[InboxMonitor] Account @${account.username} is currently dispatching a DM. Skipping inbox check.`);
+            continue;
+          } else {
+            console.warn(`[InboxMonitor] Account @${account.username} was stuck in 'dispatching' for >3m. Auto-healing status.`);
+            db.updateAccount(account.id, { currentAction: 'idle', currentActionDetails: '' });
+          }
         }
 
         try {
@@ -79,10 +86,15 @@ class InboxMonitor {
     const page = session.page;
     if (!page) return 0;
 
-    // Skip if session is currently executing outreach or warmup
-    if (session.isBusy()) {
-      console.log(`[InboxMonitor] Session @${account.username} is busy with ${session.currentTask}. Skipping check.`);
-      return 0;
+    // Skip if session is currently executing outreach or warmup (unless lock is stale > 2.5m)
+    if (session.isBusy() && session.currentTask !== 'inboxMonitor') {
+      if (session.lockAcquiredAt && Date.now() - session.lockAcquiredAt > 2.5 * 60 * 1000) {
+        console.warn(`[InboxMonitor] Force-resetting stale lock on @${account.username} (${session.currentTask})`);
+        session.forceResetLock();
+      } else {
+        console.log(`[InboxMonitor] Session @${account.username} is busy with ${session.currentTask}. Skipping check.`);
+        return 0;
+      }
     }
 
     const releaseLock = await session.acquireLock('inboxMonitor');
@@ -176,7 +188,7 @@ class InboxMonitor {
 
         let sendSuccess = false;
         try {
-          sendSuccess = await outreachEngine.sendInstagramDirectMessage(account, recipientUsername, alertText);
+          sendSuccess = await outreachEngine.sendInstagramDirectMessage(account, recipientUsername, alertText, { skipLock: true });
         } catch (err) {
           console.error(`[InboxMonitor] Failed to send alert to @${recipientUsername}:`, err.message);
         }

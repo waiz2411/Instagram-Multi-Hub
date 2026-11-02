@@ -142,4 +142,27 @@ server.listen(PORT, () => {
 
   // Start background monitoring for incoming lead replies
   inboxMonitor.startMonitoring();
+
+  // Resume any active outreach loops from DB on server startup
+  setTimeout(() => {
+    outreachEngine.checkAndHealWorkers();
+  }, 5000);
+
+  // Self-ping to prevent Render free-tier idle spin-down during active outreach
+  const renderUrl = process.env.RENDER_EXTERNAL_URL;
+  if (renderUrl) {
+    console.log(`[Server] Enabling Render Keep-Alive ping to ${renderUrl}`);
+    setInterval(async () => {
+      try {
+        const accounts = db.getAccounts();
+        const anyRunning = accounts.some(a => a.outreachStatus === 'running');
+        if (anyRunning) {
+          const res = await fetch(`${renderUrl}/api/health`).catch(() => {});
+          if (res && res.ok) {
+            console.log(`[KeepAlive] Pinged ${renderUrl}/api/health to keep outreach workers active.`);
+          }
+        }
+      } catch (e) {}
+    }, 8 * 60 * 1000); // 8 minutes (Render sleeps after 15m of inactivity)
+  }
 });

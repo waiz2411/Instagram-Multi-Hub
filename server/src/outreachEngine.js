@@ -91,6 +91,75 @@ class OutreachEngine {
   constructor() {
     this.activeAccountWorkers = new Map(); // accountId -> { isRunning: bool, timeoutId: timer }
     this.activeWorkers = new Map(); // campaignId -> { isRunning: bool, timeoutId: timer }
+    this.startWatchdog();
+  }
+
+  // --- Watchdog to auto-resume active background workers and heal stuck actions ---
+  startWatchdog() {
+    // Run watchdog every 60 seconds to resume workers after reboot/spin-down and unstick any deadlocks
+    setInterval(() => {
+      this.checkAndHealWorkers();
+    }, 60 * 1000);
+  }
+
+  checkAndHealWorkers() {
+    try {
+      const accounts = db.getAccounts();
+      const now = Date.now();
+
+      for (const account of accounts) {
+        if (account.outreachStatus === 'running') {
+          const worker = this.activeAccountWorkers.get(account.id);
+
+          // 1. Worker was marked running in DB but not active in memory (e.g. server reboot or Render spin-up)
+          if (!worker || !worker.isRunning) {
+            console.log(`[Watchdog] Resuming background outreach worker for @${account.username}...`);
+            this.activeAccountWorkers.set(account.id, { isRunning: true });
+
+            const nextRunTime = account.nextRunAt ? new Date(account.nextRunAt).getTime() : 0;
+            if (nextRunTime <= now || account.currentAction === 'dispatching') {
+              console.log(`[Watchdog] Running pending DM cycle for @${account.username} immediately.`);
+              this.runAccountLoop(account.id).catch(e => console.error('[Watchdog] Loop error:', e));
+            } else {
+              const remainingMs = Math.max(1000, nextRunTime - now);
+              console.log(`[Watchdog] Next DM for @${account.username} scheduled in ${Math.round(remainingMs / 60000)}m`);
+              const w = this.activeAccountWorkers.get(account.id);
+              if (w) {
+                w.timeoutId = setTimeout(() => this.runAccountLoop(account.id), remainingMs);
+              }
+            }
+            continue;
+          }
+
+          // 2. Action has been stuck in 'dispatching' for > 3 minutes (recover from stuck browser action)
+          if (account.currentAction === 'dispatching') {
+            const updatedAt = new Date(account.updatedAt || 0).getTime();
+            if (now - updatedAt > 3 * 60 * 1000) {
+              console.warn(`[Watchdog] Account @${account.username} stuck in 'dispatching' for >3m. Recovering...`);
+              db.updateAccount(account.id, {
+                currentAction: 'waiting',
+                currentActionDetails: 'Recovered from timeout. Rescheduling next attempt...',
+                nextRunAt: new Date(now + 30000).toISOString()
+              });
+              if (worker.timeoutId) clearTimeout(worker.timeoutId);
+              worker.timeoutId = setTimeout(() => this.runAccountLoop(account.id), 30000);
+            }
+          }
+
+          // 3. Action is waiting, but timer expired without firing (e.g. container sleep)
+          if (account.currentAction === 'waiting' && account.nextRunAt) {
+            const nextRunTime = new Date(account.nextRunAt).getTime();
+            if (now - nextRunTime > 30000) {
+              console.log(`[Watchdog] Timer expired for @${account.username}. Running now.`);
+              if (worker.timeoutId) clearTimeout(worker.timeoutId);
+              this.runAccountLoop(account.id).catch(e => console.error('[Watchdog] Loop error:', e));
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Watchdog] Notice in checkAndHealWorkers:', err.message);
+    }
   }
 
   // --- Account-Direct Outreach Loop ---
@@ -247,7 +316,7 @@ class OutreachEngine {
   }
 
   // --- Instagram DM Automation Actions ---
-  async sendInstagramDirectMessage(account, targetUsername, message) {
+  async sendInstagramDirectMessage(account, targetUsername, message, options = {}) {
     const session = await browserManager.getOrCreateSession(account, { isMobile: false, viewport: { width: 1280, height: 800 } });
     const page = session.page;
     if (!page) throw new Error('Browser page not available');
@@ -260,8 +329,8 @@ class OutreachEngine {
       }
     } catch (e) {}
 
-    // Acquire exclusive session lock to prevent inboxMonitor or warmup from colliding
-    const releaseLock = await session.acquireLock('outreach');
+    // Acquire exclusive session lock unless caller already holds it (e.g. inboxMonitor)
+    const releaseLock = options.skipLock ? (() => {}) : await session.acquireLock('outreach');
 
     try {
       // 0. Verify sender session
