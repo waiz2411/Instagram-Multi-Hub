@@ -153,13 +153,21 @@ class InboxMonitor {
 
           for (const el of threadElements) {
             const rawText = clean(el.innerText || '');
-            const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+            let lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+
+            // Skip status indicators (e.g. 'Active now', 'Active 5m ago', 'Primary', etc.)
+            const isJunkLine = (t) => {
+              const lower = (t || '').toLowerCase();
+              return ['primary', 'general', 'requests', "what's new...", 'your note', 'messages', 'active now', 'active today'].includes(lower) ||
+                lower.startsWith('active ') || lower.startsWith('seen ');
+            };
+
+            while (lines.length > 0 && isJunkLine(lines[0])) {
+              lines.shift();
+            }
+
             if (lines.length >= 2) {
               const sender = lines[0].replace('@', '').trim();
-              if (['primary', 'general', 'requests', "what's new...", 'your note', 'messages'].includes(sender.toLowerCase())) {
-                continue;
-              }
-
               const snippet = lines[1];
               const lowerSnippet = snippet.toLowerCase();
               const isFromOther = !lowerSnippet.startsWith('you: ') && !lowerSnippet.startsWith('you sent ');
