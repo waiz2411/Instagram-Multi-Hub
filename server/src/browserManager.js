@@ -307,7 +307,7 @@ class BrowserSession {
       const initialUrl = this.page.url();
       if (!initialUrl || initialUrl === 'about:blank') {
         try {
-          await this.page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+          await this.page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'commit', timeout: 35000 });
         } catch (e) {
           console.warn(`[Browser] Initial navigation notice:`, e.message);
         }
@@ -480,7 +480,11 @@ class BrowserSession {
 
         case 'navigate':
           if (event.url) {
-            await this.page.goto(event.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            try {
+              await this.page.goto(event.url, { waitUntil: 'commit', timeout: 35000 });
+            } catch (e) {
+              console.warn(`[Browser] Notice during user navigation to ${event.url}:`, e.message);
+            }
             await this.captureAndPushScreenshot();
           }
           break;
@@ -662,7 +666,7 @@ class BrowserSession {
 
     // Navigate to Instagram homepage to verify authentication
     try {
-      await this.page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await this.page.goto('https://www.instagram.com/', { waitUntil: 'commit', timeout: 35000 });
       await this.page.waitForTimeout(3000);
     } catch (e) {
       console.warn(`[Browser] Notice after cookie injection navigation:`, e.message);

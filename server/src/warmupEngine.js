@@ -123,7 +123,11 @@ class WarmupEngine {
         });
 
         console.log(`[Warmup] @${account.username || account.id} -> Browsing ${targetMode}...`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+        try {
+          await page.goto(targetUrl, { waitUntil: 'commit', timeout: 45000 });
+        } catch (e) {
+          console.warn(`[Warmup] Notice navigating to ${targetUrl}:`, e.message);
+        }
         await page.waitForTimeout(3000);
 
         // Dismiss any popup modals

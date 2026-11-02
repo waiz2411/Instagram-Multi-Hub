@@ -346,9 +346,17 @@ class OutreachEngine {
       const cleanTarget = targetUsername.replace('@', '').trim().toLowerCase();
       console.log(`[Outreach] Opening Direct Inbox to message @${cleanTarget}...`);
 
-      // 1. Navigate directly to Instagram Direct Inbox
-      await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-      await page.waitForTimeout(3000);
+      // 1. Navigate directly to Instagram Direct Inbox if not already there
+      const currentUrl = page.url() || '';
+      if (!currentUrl.includes('/direct/inbox')) {
+        try {
+          // 'commit' resolves as soon as the HTTP response is committed (typically ~2-4s), avoiding heavy client-side script hangs!
+          await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'commit', timeout: 45000 });
+        } catch (e) {
+          console.warn(`[Outreach] Notice during initial nav to inbox:`, e.message);
+        }
+        await page.waitForTimeout(2500);
+      }
 
       // Helper to dismiss notification/modal overlays
       const dismissPopups = async () => {

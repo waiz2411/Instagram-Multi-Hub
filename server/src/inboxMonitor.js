@@ -109,9 +109,16 @@ class InboxMonitor {
 
       console.log(`[InboxMonitor] Scanning Direct Inbox on @${account.username}...`);
 
-      // Navigate to direct inbox
-      await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-      await page.waitForTimeout(3000);
+      // Navigate to direct inbox if not already there
+      const currentUrl = page.url() || '';
+      if (!currentUrl.includes('/direct/inbox')) {
+        try {
+          await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'commit', timeout: 45000 });
+        } catch (e) {
+          console.warn(`[InboxMonitor] Notice navigating to inbox:`, e.message);
+        }
+        await page.waitForTimeout(2500);
+      }
 
       // Dismiss notifications modal if present
       await page.evaluate(() => {
