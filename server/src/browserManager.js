@@ -176,6 +176,21 @@ class BrowserSession {
         }
       }
 
+      // Auto-restore cookies from account record if fresh profile (e.g. after container restart or Render reboot)
+      const currentAcc = db.getAccount(this.accountId) || this.account;
+      if (currentAcc?.sessionCookies && Array.isArray(currentAcc.sessionCookies) && currentAcc.sessionCookies.length > 0) {
+        try {
+          const currentCookies = await this.context.cookies(['https://www.instagram.com']);
+          const hasSession = currentCookies.some(c => c.name === 'sessionid');
+          if (!hasSession) {
+            console.log(`[Browser] Restoring ${currentAcc.sessionCookies.length} saved session cookies for @${currentAcc.username || this.accountId}...`);
+            await this.context.addCookies(currentAcc.sessionCookies);
+          }
+        } catch (cookieErr) {
+          console.warn('[Browser] Notice auto-restoring session cookies:', cookieErr.message);
+        }
+      }
+
       // Inject comprehensive stealth & anti-bot evasion scripts into all frames & subframes (reCAPTCHA Enterprise stealth)
       await this.context.addInitScript(() => {
         // 1. Remove automation / webdriver flag
@@ -566,6 +581,15 @@ class BrowserSession {
 
         const updates = {
           status: 'connected',
+          sessionCookies: cookies.map(c => ({
+            name: c.name,
+            value: c.value,
+            domain: c.domain || '.instagram.com',
+            path: c.path || '/',
+            secure: true,
+            httpOnly: c.httpOnly ?? (c.name === 'sessionid'),
+            sameSite: c.sameSite || 'None'
+          })),
           lastActiveAt: new Date().toISOString()
         };
 
@@ -663,6 +687,13 @@ class BrowserSession {
     // Inject cookies into persistent browser context
     await this.context.addCookies(cookiesToAdd);
     console.log(`[Browser] Injected ${cookiesToAdd.length} cookies for @${this.account.username || this.accountId}`);
+
+    // Persist cookies to database immediately so they survive container restarts
+    db.updateAccount(this.accountId, {
+      sessionCookies: cookiesToAdd,
+      status: 'connected',
+      lastActiveAt: new Date().toISOString()
+    });
 
     // Navigate to Instagram homepage to verify authentication
     try {

@@ -24,6 +24,22 @@ class WarmupEngine {
     return Boolean(worker && worker.isRunning);
   }
 
+  checkAndResumeWarmups() {
+    try {
+      const accounts = db.getAccounts();
+      for (const account of accounts) {
+        if (account.warmupEnabled && (account.warmupStatus === 'running' || account.warmupStatus === 'active')) {
+          if (!this.isWarmupActive(account.id)) {
+            console.log(`[Warmup] Auto-resuming background warmup for @${account.username || account.id}...`);
+            this.startWarmup(account.id).catch(e => console.error('[Warmup] Resume error:', e.message));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Warmup] Notice in checkAndResumeWarmups:', e.message);
+    }
+  }
+
   async startWarmup(accountId) {
     if (this.activeWarmupWorkers.has(accountId)) {
       console.log(`[Warmup] Account ${accountId} warmup is already active.`);

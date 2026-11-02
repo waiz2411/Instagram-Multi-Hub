@@ -237,5 +237,20 @@ export const api = {
   async getStats() {
     const res = await fetch(`${BASE_URL}/api/logs/stats`);
     return res.json();
+  },
+
+  // State Persistence & Synchronization
+  async getSyncState() {
+    const res = await fetch(`${BASE_URL}/api/sync/state`);
+    return res.json();
+  },
+
+  async restoreSync(data) {
+    const res = await fetch(`${BASE_URL}/api/sync/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
   }
 };

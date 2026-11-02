@@ -63,7 +63,49 @@ export default function App() {
         api.getLeadLists(),
         api.getStats()
       ]);
-      if (accRes.success) setAccounts(accRes.accounts);
+
+      let currentAccounts = accRes.success ? accRes.accounts : [];
+
+      // Auto-restore from resilient local backup if server restarted with defaults
+      const cachedRaw = localStorage.getItem('igmh_backup_data');
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw);
+          const cachedAccounts = cached.accounts || [];
+          const hasCachedConnected = cachedAccounts.some(a => a.status === 'connected' && a.sessionCookies?.length);
+          const serverNeedsRestore =
+            currentAccounts.length === 0 ||
+            (hasCachedConnected && currentAccounts.every(a => a.status === 'needs_login' || !a.sessionCookies?.length));
+
+          if (serverNeedsRestore && cachedAccounts.length > 0) {
+            console.log('[AutoSync] Server restart detected. Restoring session and state from local backup...');
+            const restoreRes = await api.restoreSync({
+              accounts: cachedAccounts,
+              leads: cached.leads || []
+            });
+            if (restoreRes.success && restoreRes.accounts) {
+              currentAccounts = restoreRes.accounts;
+            }
+          }
+        } catch (e) {
+          console.warn('[AutoSync] Notice:', e.message);
+        }
+      }
+
+      if (accRes.success) {
+        setAccounts(currentAccounts);
+        // If accounts have active/connected cookies or settings, persist updated snapshot to localStorage
+        if (currentAccounts.some(a => a.status === 'connected' || a.sessionCookies?.length)) {
+          api.getLeads().then(leadsRes => {
+            const leads = leadsRes.success ? leadsRes.leads : [];
+            localStorage.setItem('igmh_backup_data', JSON.stringify({
+              accounts: currentAccounts,
+              leads,
+              timestamp: Date.now()
+            }));
+          }).catch(() => {});
+        }
+      }
       if (listsRes.success) setLeadLists(listsRes.lists);
       if (statsRes.success) setStats(statsRes.stats);
     } catch (err) {

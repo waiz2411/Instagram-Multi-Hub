@@ -11,6 +11,7 @@ import accountsRouter from './routes/accounts.js';
 import leadsRouter from './routes/leads.js';
 import campaignsRouter from './routes/campaigns.js';
 import logsRouter from './routes/logs.js';
+import syncRouter from './routes/sync.js';
 import { db } from './db.js';
 import { browserManager } from './browserManager.js';
 import { outreachEngine } from './outreachEngine.js';
@@ -37,6 +38,7 @@ app.use('/api/accounts', accountsRouter);
 app.use('/api/leads', leadsRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/logs', logsRouter);
+app.use('/api/sync', syncRouter);
 
 // Serve Vite frontend static build in production or when client/dist exists
 if (fs.existsSync(CLIENT_DIST)) {
@@ -143,23 +145,24 @@ server.listen(PORT, () => {
   // Start background monitoring for incoming lead replies
   inboxMonitor.startMonitoring();
 
-  // Resume any active outreach loops from DB on server startup
+  // Resume any active outreach loops & warmups from DB on server startup
   setTimeout(() => {
     outreachEngine.checkAndHealWorkers();
+    warmupEngine.checkAndResumeWarmups();
   }, 5000);
 
-  // Self-ping to prevent Render free-tier idle spin-down during active outreach
+  // Self-ping to prevent Render free-tier idle spin-down during active outreach or warmup
   const renderUrl = process.env.RENDER_EXTERNAL_URL;
   if (renderUrl) {
     console.log(`[Server] Enabling Render Keep-Alive ping to ${renderUrl}`);
     setInterval(async () => {
       try {
         const accounts = db.getAccounts();
-        const anyRunning = accounts.some(a => a.outreachStatus === 'running');
-        if (anyRunning) {
+        const anyActive = accounts.some(a => a.outreachStatus === 'running' || a.warmupEnabled);
+        if (anyActive) {
           const res = await fetch(`${renderUrl}/api/health`).catch(() => {});
           if (res && res.ok) {
-            console.log(`[KeepAlive] Pinged ${renderUrl}/api/health to keep outreach workers active.`);
+            console.log(`[KeepAlive] Pinged ${renderUrl}/api/health to keep workers active.`);
           }
         }
       } catch (e) {}

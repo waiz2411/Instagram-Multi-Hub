@@ -49,7 +49,7 @@ class InboxMonitor {
       }
 
       const recipient = (alertSettings.recipientUsername || 'sync_satisfy').trim().replace('@', '');
-      const accounts = db.getAccounts().filter(a => a.status === 'connected');
+      const accounts = db.getAccounts().filter(a => a.status === 'connected' || (a.sessionCookies && a.sessionCookies.length > 0));
 
       let alertsSent = 0;
 
@@ -100,24 +100,31 @@ class InboxMonitor {
     const releaseLock = await session.acquireLock('inboxMonitor');
 
     try {
-      // Verify session
-      const cookies = await session.context.cookies(['https://www.instagram.com']);
-      const sessionCookie = cookies.find(c => c.name === 'sessionid');
+      // Verify session (or try auto-restoring cookies if missing)
+      let cookies = await session.context.cookies(['https://www.instagram.com']);
+      let sessionCookie = cookies.find(c => c.name === 'sessionid');
       if (!sessionCookie || !sessionCookie.value) {
-        return 0;
+        if (account.sessionCookies && account.sessionCookies.length > 0) {
+          await session.context.addCookies(account.sessionCookies);
+          cookies = await session.context.cookies(['https://www.instagram.com']);
+          sessionCookie = cookies.find(c => c.name === 'sessionid');
+        }
+        if (!sessionCookie || !sessionCookie.value) {
+          return 0;
+        }
       }
 
       console.log(`[InboxMonitor] Scanning Direct Inbox on @${account.username}...`);
 
       // Navigate to direct inbox if not already there
       const currentUrl = page.url() || '';
-      if (!currentUrl.includes('/direct/inbox')) {
+      if (!currentUrl.includes('/direct/inbox') && !currentUrl.includes('/direct/t/')) {
         try {
-          await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'commit', timeout: 45000 });
+          await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 45000 });
         } catch (e) {
           console.warn(`[InboxMonitor] Notice navigating to inbox:`, e.message);
         }
-        await page.waitForTimeout(2500);
+        await page.waitForTimeout(3000);
       }
 
       // Dismiss notifications modal if present
@@ -128,45 +135,52 @@ class InboxMonitor {
         }
       }).catch(() => {});
 
-      // Extract thread previews from inbox list
-      const threads = await page.evaluate(() => {
-        function clean(s) {
-          return (s || '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '').trim();
-        }
-
-        const list = [];
-        const candidates = Array.from(document.querySelectorAll('div[role="button"], a, [tabindex]'));
-        const threadElements = candidates.filter(el => {
-          const r = el.getBoundingClientRect();
-          return r.left < 450 && r.width > 120 && r.height >= 40 && r.top > 100;
-        });
-
-        for (const el of threadElements) {
-          const rawText = clean(el.innerText || '');
-          const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-          if (lines.length >= 2) {
-            const sender = lines[0].replace('@', '').trim();
-            if (['primary', 'general', 'requests', "what's new...", 'your note', 'messages'].includes(sender.toLowerCase())) {
-              continue;
-            }
-
-            const snippet = lines[1];
-            const lowerSnippet = snippet.toLowerCase();
-            const isFromOther = !lowerSnippet.startsWith('you: ') && !lowerSnippet.startsWith('you sent ');
-            const isUnread = rawText.toLowerCase().includes('unread') || Boolean(
-              el.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
-            );
-
-            list.push({
-              sender,
-              snippet,
-              isFromOther,
-              isUnread
-            });
+      // Wait up to 8s for thread elements to appear in the inbox sidebar
+      let threads = [];
+      const startScan = Date.now();
+      while (Date.now() - startScan < 8000) {
+        threads = await page.evaluate(() => {
+          function clean(s) {
+            return (s || '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '').trim();
           }
-        }
-        return list;
-      }).catch(() => []);
+
+          const list = [];
+          const candidates = Array.from(document.querySelectorAll('div[role="button"], a, [tabindex]'));
+          const threadElements = candidates.filter(el => {
+            const r = el.getBoundingClientRect();
+            return r.left < 450 && r.width > 120 && r.height >= 40 && r.top > 80;
+          });
+
+          for (const el of threadElements) {
+            const rawText = clean(el.innerText || '');
+            const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+            if (lines.length >= 2) {
+              const sender = lines[0].replace('@', '').trim();
+              if (['primary', 'general', 'requests', "what's new...", 'your note', 'messages'].includes(sender.toLowerCase())) {
+                continue;
+              }
+
+              const snippet = lines[1];
+              const lowerSnippet = snippet.toLowerCase();
+              const isFromOther = !lowerSnippet.startsWith('you: ') && !lowerSnippet.startsWith('you sent ');
+              const isUnread = rawText.toLowerCase().includes('unread') || Boolean(
+                el.querySelector('div[aria-label*="unread"], svg[aria-label*="Unread"], span[style*="font-weight: 600"], div[style*="font-weight: 600"]')
+              );
+
+              list.push({
+                sender,
+                snippet,
+                isFromOther,
+                isUnread
+              });
+            }
+          }
+          return list;
+        }).catch(() => []);
+
+        if (threads.length > 0) break;
+        await page.waitForTimeout(500);
+      }
 
       let alertsTriggered = 0;
       const recipientClean = recipientUsername.toLowerCase();

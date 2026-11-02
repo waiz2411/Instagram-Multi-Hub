@@ -652,10 +652,20 @@ class OutreachEngine {
         throw new Error(`Could not locate message input box for @${cleanTarget}`);
       }
 
-      // 7. Type and send message naturally
+      // 7. Type and send message naturally (handle multi-line text with Shift+Enter so alerts/templates don't prematurely submit)
       console.log(`[Outreach] Typing message to @${cleanTarget}...`);
       await page.waitForTimeout(400);
-      await page.keyboard.type(message, { delay: Math.floor(Math.random() * 20) + 30 });
+
+      const msgLines = message.split('\n');
+      for (let i = 0; i < msgLines.length; i++) {
+        await page.keyboard.type(msgLines[i], { delay: Math.floor(Math.random() * 15) + 25 });
+        if (i < msgLines.length - 1) {
+          await page.keyboard.down('Shift');
+          await page.keyboard.press('Enter');
+          await page.keyboard.up('Shift');
+          await page.waitForTimeout(80);
+        }
+      }
       await page.waitForTimeout(700);
 
       console.log('[Outreach] Dispatching message (Enter)...');
